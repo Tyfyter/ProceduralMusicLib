@@ -10,20 +10,33 @@ using Terraria.Audio;
 using Terraria.GameContent;
 using Terraria.ID;
 using Terraria.ModLoader;
+using static ProceduralMusicLib.AudioBuilder;
 
-namespace ProceduralMusicLib
-{
+namespace ProceduralMusicLib {
 	public class ProceduralMusicLib : Mod {
 		public static ChanneledAudioTrack testTrack;
 		public override void Load() {
 			if (Main.audioSystem is LegacyAudioSystem audioSystem) {
-				 testTrack = new ChanneledAudioTrack(new AudioChannel(true,
-					AudioChannel.Keyframe.Note(BuildSquareWave(200, 12000)),
-					AudioChannel.Keyframe.Note(BuildSquareWave(300, 12000)),
-					AudioChannel.Keyframe.Note(BuildSquareWave(200, 6000)),
-					AudioChannel.Keyframe.Note(BuildSquareWave(500, 24000)),
-					AudioChannel.Keyframe.Note(BuildSquareWave(700, 24000), 0)
-				));
+				AudioChannel channel0 = new AudioChannel(true,
+					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 6000)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(300, 6000)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 3000)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(500, 12000)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(700, 12000)),
+					default
+				);
+				AudioChannel channel1 = new AudioChannel(true,
+					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 6000, temperment: 0.1f)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(300, 6000, temperment: 0.1f)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 3000, temperment: 0.1f)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(500, 12000, temperment: 0.1f)),
+					AudioChannel.Keyframe.Audio(BuildSquareWave(700, 12000, temperment: 0.1f)),
+					AudioChannel.Keyframe.Audio(ExtractWav("Origins/Sounds/Custom/ShrapnelFest.wav")),
+					default
+				);
+				channel0.keyframes[^1] = AudioChannel.Keyframe.Switch(1, channel1);
+				channel1.keyframes[^1] = AudioChannel.Keyframe.Switch(-1, channel0);
+				testTrack = new ChanneledAudioTrack(channel0);
 				audioSystem.AudioTracks[MusicID.Crimson] = audioSystem.DefaultTrackByIndex[MusicID.Crimson] = testTrack;
 				/*(position) => {
 					if (position < 24000 * 16) {
@@ -59,11 +72,35 @@ namespace ProceduralMusicLib
 				return (byte)total;
 			};
 		}
-		public static byte[] BuildRest(int duration) => new byte[duration];
-		public static byte[] BuildSquareWave(double frequency, int duration, int volume = 64, double temperment = 0.5) {
-			byte[] buffer = new byte[duration];
-			for (int i = 0; i < buffer.Length; i++) {
-				buffer[i] = (byte)(((i / (24000.0 / frequency)) % 1) > temperment ? 0 : volume);
+	}
+	public static class AudioBuilder {
+		public static byte[] BuildRest(int duration) => new byte[duration * 2];
+		public static byte[] BuildSquareWave(double frequency, int duration, int volume = 64, double temperment = 0.5, int leftVolume = -1) {
+			if (leftVolume == -1) leftVolume = volume;
+			byte[] buffer = new byte[duration * 2];
+			for (int i = 0; i < duration; i++) {
+				buffer[i * 2] = (byte)(((i / (24000.0 / frequency)) % 1) > temperment ? 0 : leftVolume);
+				buffer[i * 2 + 1] = (byte)(((i / (24000.0 / frequency)) % 1) > temperment ? 0 : volume);
+			}
+			return buffer;
+		}
+		public static byte[] ExtractWav(string name) {
+			byte[] bytes =  ModContent.GetFileBytes(name);
+			int pos = 12;   // First Subchunk ID from 12 to 16
+
+			// Keep iterating until we find the data chunk (i.e. 64 61 74 61 ...... (i.e. 100 97 116 97 in decimal))
+			while (!(bytes[pos] == 100 && bytes[pos + 1] == 97 && bytes[pos + 2] == 116 && bytes[pos + 3] == 97)) {
+				pos += 4;
+				int chunkSize = bytes[pos] + bytes[pos + 1] * 256 + bytes[pos + 2] * 65536 + bytes[pos + 3] * 16777216;
+				pos += 4 + chunkSize;
+			}
+			pos += 8;
+			int samples = (bytes.Length - pos) / 2;
+			byte[] buffer = new byte[samples];
+			int i = 0;
+			while (pos < bytes.Length) {
+				buffer[i++] = bytes[pos + 1];
+				pos += 2;
 			}
 			return buffer;
 		}
@@ -92,10 +129,10 @@ namespace ProceduralMusicLib
 				spriteBatch.Draw(pixel, pos, frame, Color.Blue, diff.ToRotation(), Vector2.Zero, new Vector2(diff.Length(), 1), 0, 0);
 				xPosition += prog;
 			}
-			if (Main.mouseY < 0.5 * Main.screenHeight) {
-				ProceduralMusicLib.testTrack.Trigger(0);
+			if (Main.mouseY > 0.5 * Main.screenHeight) {
+				ProceduralMusicLib.testTrack.Trigger(1);
 			} else {
-				ProceduralMusicLib.testTrack.UnTrigger(0);
+				ProceduralMusicLib.testTrack.UnTrigger(1);
 			}
 		}
 	}
@@ -125,14 +162,13 @@ namespace ProceduralMusicLib
 			}
 		}
 	}
-	public class AudioChannel {
+	public struct AudioChannel {
 		public Keyframe[] keyframes;
-		public bool loops = false;
-		public AudioChannel(params Keyframe[] keyframes) {
-			this.keyframes = keyframes;
-		}
-		public AudioChannel(bool loop, params Keyframe[] keyframes) : this(keyframes) {
+		public bool loops;
+		public AudioChannel(params Keyframe[] keyframes) : this(false, keyframes) {}
+		public AudioChannel(bool loop, params Keyframe[] keyframes) {
 			loops = loop;
+			this.keyframes = keyframes;
 		}
 		public struct Keyframe {
 			public KeyframeType type;
@@ -145,10 +181,10 @@ namespace ProceduralMusicLib
 				this.audio = audio;
 				this.channels = channels;
 			}
-			public static Keyframe Stop(int trigger = -1) => new(KeyframeType.STOP, trigger, Array.Empty<byte>(), Array.Empty<AudioChannel>());
-			public static Keyframe AddChannels(int trigger = -1, params AudioChannel[] channels) => new(KeyframeType.ADD_CHANNEL, trigger, Array.Empty<byte>(), channels);
-			public static Keyframe Switch(int trigger = -1, params AudioChannel[] channels) => new(KeyframeType.SWITCH, trigger, Array.Empty<byte>(), channels);
-			public static Keyframe Note(byte[] audio, int trigger = -1) => new(KeyframeType.NOTE, trigger, audio, Array.Empty<AudioChannel>());
+			public static Keyframe Stop(int trigger = 0) => new(KeyframeType.STOP, trigger, Array.Empty<byte>(), Array.Empty<AudioChannel>());
+			public static Keyframe AddChannels(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.ADD_CHANNEL, trigger, Array.Empty<byte>(), channels);
+			public static Keyframe Switch(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.SWITCH, trigger, Array.Empty<byte>(), channels);
+			public static Keyframe Audio(byte[] audio, int trigger = 0) => new(KeyframeType.NOTE, trigger, audio, Array.Empty<AudioChannel>());
 		}
 		public enum KeyframeType {
 			NOTE        = 0b0001,
@@ -156,7 +192,10 @@ namespace ProceduralMusicLib
 			STOP        = 0b0100,
 			SWITCH      = 0b0110,
 		}
-		public int Update(ref int progress, int position, HashSet<int> triggers, [Out] List<AudioChannel> switches) {
+		public AudioChannel Clone() {
+			return this with { keyframes = keyframes.ToArray() };
+		}
+		public int Update(ref int progress, int position, HashSet<int> triggers, [Out] List<AudioChannel?> switches) {
 			int tries = 0;
 			while (++tries < 100) {
 				if (progress >= keyframes.Length) {
@@ -168,7 +207,7 @@ namespace ProceduralMusicLib
 					}
 				}
 				Keyframe keyframe = keyframes[progress];
-				if (position == 0 && keyframe.trigger != -1 && !triggers.Contains(keyframe.trigger)) {
+				if (position == 0 && keyframe.trigger != 0 && (triggers.Contains(Math.Abs(keyframe.trigger)) ^ (keyframe.trigger > 0))) {
 					progress++;
 					continue;
 				}
@@ -207,22 +246,22 @@ namespace ProceduralMusicLib
 			List<AudioChannel> switches = new();
 			for (int c = 0; c < activeChannels.Count; c++) {
 				ActiveAudioChannel activeChannel = activeChannels[c];
-				List<AudioChannel> newSwitches = new();
+				List<AudioChannel?> newSwitches = new();
 				int oldProgress = activeChannel.progress;
 				value += activeChannel.audioChannel.Update(ref activeChannel.progress, position - activeChannel.frameStart, triggers, newSwitches);
 
 				if (oldProgress != activeChannel.progress) activeChannel.frameStart = position;
 				bool removed = false;
 				for (int i = 0; i < newSwitches.Count; i++) {
-					if (newSwitches[i] is null) {
+					if (newSwitches[i].HasValue) {
+						switches.Add(newSwitches[i].Value);
+					} else {
 						if (removed) {
 							///TODO: logging
 						} else {
 							activeChannels.RemoveAt(c--);
 							removed = true;
 						}
-					} else {
-						switches.Add(switches[i]);
 					}
 				}
 			}
