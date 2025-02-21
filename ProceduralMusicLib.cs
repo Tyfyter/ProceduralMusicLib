@@ -8,47 +8,15 @@ using System.Runtime.InteropServices;
 using Terraria;
 using Terraria.Audio;
 using Terraria.GameContent;
+using Terraria.GameContent.Tile_Entities;
 using Terraria.ID;
 using Terraria.ModLoader;
 using static ProceduralMusicLib.AudioBuilder;
 
 namespace ProceduralMusicLib {
 	public class ProceduralMusicLib : Mod {
-		public static ChanneledAudioTrack testTrack;
-		public override void Load() {
-			if (Main.audioSystem is LegacyAudioSystem audioSystem) {
-				AudioChannel channel0 = new AudioChannel(true,
-					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 6000)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(300, 6000)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 3000)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(500, 12000)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(700, 12000)),
-					default
-				);
-				AudioChannel channel1 = new AudioChannel(true,
-					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 6000, temperment: 0.1f)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(300, 6000, temperment: 0.1f)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(200, 3000, temperment: 0.1f)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(500, 12000, temperment: 0.1f)),
-					AudioChannel.Keyframe.Audio(BuildSquareWave(700, 12000, temperment: 0.1f)),
-					AudioChannel.Keyframe.Audio(ExtractWav("Origins/Sounds/Custom/ShrapnelFest.wav")),
-					default
-				);
-				channel0.keyframes[^1] = AudioChannel.Keyframe.Switch(1, channel1);
-				channel1.keyframes[^1] = AudioChannel.Keyframe.Switch(-1, channel0);
-				testTrack = new ChanneledAudioTrack(channel0);
-				audioSystem.AudioTracks[MusicID.Crimson] = audioSystem.DefaultTrackByIndex[MusicID.Crimson] = testTrack;
-				/*(position) => {
-					if (position < 24000 * 16) {
-						return (byte)(((position / 300f) % 1) * 64);
-					}
-					if (position < 24000 * 32) {
-						double progress = position / (24000.0 * 16) - 1;
-						return (byte)((((position / 300f) % 1) * 64) * (1 - progress) + Math.Sin(position / 30f + 1) * 64 * progress);
-					}
-					return (byte)((Math.Sin(position / 30f) + 1) * 64);
-				}*/
-			}
+		public ProceduralMusicLib() : base() {
+			MusicAutoloadingEnabled = false;
 		}
 		public static Func<int, byte> BuildSquareSequence(params (int freq, int dur)[] notes) {
 			int totalLength = 0;
@@ -84,10 +52,9 @@ namespace ProceduralMusicLib {
 			}
 			return buffer;
 		}
-		public static byte[] ExtractWav(string name) {
+		public static byte[] ExtractWav(string name, float speed = 1f, float volume = 1f) {
 			byte[] bytes =  ModContent.GetFileBytes(name);
 			int pos = 12;   // First Subchunk ID from 12 to 16
-
 			// Keep iterating until we find the data chunk (i.e. 64 61 74 61 ...... (i.e. 100 97 116 97 in decimal))
 			while (!(bytes[pos] == 100 && bytes[pos + 1] == 97 && bytes[pos + 2] == 116 && bytes[pos + 3] == 97)) {
 				pos += 4;
@@ -98,42 +65,13 @@ namespace ProceduralMusicLib {
 			int samples = (bytes.Length - pos) / 2;
 			byte[] buffer = new byte[samples];
 			int i = 0;
-			while (pos < bytes.Length) {
-				buffer[i++] = bytes[pos + 1];
-				pos += 2;
+			float posOffset = 0;
+			int GetPos() => pos + ((int)posOffset) * 2;
+			while (GetPos() < bytes.Length) {
+				buffer[i++] = (byte)Math.Min(bytes[GetPos() + 1] * volume, byte.MaxValue);
+				posOffset += speed;
 			}
 			return buffer;
-		}
-	}
-	public class ProceduralMusicLibSystem : ModSystem {
-		internal static byte[] _bufferToSubmit;
-		int offset = 0;
-		public override void PostDrawInterface(SpriteBatch spriteBatch) {
-			if (_bufferToSubmit is null) return;
-			float xPosition = 0;
-			int yPosition = 512;
-			Texture2D pixel = TextureAssets.MagicPixel.Value;
-			Rectangle frame = new Rectangle(0, 0, 1, 1);
-			float prog = Main.screenWidth / (float)(_bufferToSubmit.Length / 2);
-			for (int i = 0; i < _bufferToSubmit.Length - 2; i += 2) {
-				Vector2 pos = new Vector2(xPosition, yPosition - _bufferToSubmit[i]);
-				Vector2 diff = new Vector2(xPosition + prog, yPosition - _bufferToSubmit[i + 2]) - pos;
-				spriteBatch.Draw(pixel, pos, frame, Color.Red, diff.ToRotation(), Vector2.Zero, new Vector2(diff.Length(), 1), 0, 0);
-				xPosition += prog;
-			}
-			xPosition = 0;
-			yPosition = 512 + 300;
-			for (int i = 1; i < _bufferToSubmit.Length - 2; i += 2) {
-				Vector2 pos = new Vector2(xPosition, yPosition - _bufferToSubmit[i]);
-				Vector2 diff = new Vector2(xPosition + prog, yPosition - _bufferToSubmit[i + 2]) - pos;
-				spriteBatch.Draw(pixel, pos, frame, Color.Blue, diff.ToRotation(), Vector2.Zero, new Vector2(diff.Length(), 1), 0, 0);
-				xPosition += prog;
-			}
-			if (Main.mouseY > 0.5 * Main.screenHeight) {
-				ProceduralMusicLib.testTrack.Trigger(1);
-			} else {
-				ProceduralMusicLib.testTrack.UnTrigger(1);
-			}
 		}
 	}
 	public class ProceduralAudioTrack : ASoundEffectBasedAudioTrack {
@@ -151,7 +89,9 @@ namespace ProceduralMusicLib {
 			position = 0;
 		}
 		protected override void ReadAheadPutAChunkIntoTheBuffer() {
-			ProceduralMusicLibSystem._bufferToSubmit = _bufferToSubmit;
+#if DEBUG
+			ProceduralMusicLibTestSystem._bufferToSubmit = _bufferToSubmit;
+#endif
 			for (int i = 0; i < _bufferToSubmit.Length; i++) {
 				_bufferToSubmit[i] = procedure(++position);
 			}
@@ -162,14 +102,11 @@ namespace ProceduralMusicLib {
 			}
 		}
 	}
-	public struct AudioChannel {
-		public Keyframe[] keyframes;
-		public bool loops;
+	public struct AudioChannel(bool loop, params AudioChannel.Keyframe[] keyframes) {
+		public Keyframe[] keyframes = keyframes;
+		public bool loops = loop;
 		public AudioChannel(params Keyframe[] keyframes) : this(false, keyframes) {}
-		public AudioChannel(bool loop, params Keyframe[] keyframes) {
-			loops = loop;
-			this.keyframes = keyframes;
-		}
+
 		public struct Keyframe {
 			public KeyframeType type;
 			public int trigger;
@@ -181,10 +118,10 @@ namespace ProceduralMusicLib {
 				this.audio = audio;
 				this.channels = channels;
 			}
-			public static Keyframe Stop(int trigger = 0) => new(KeyframeType.STOP, trigger, Array.Empty<byte>(), Array.Empty<AudioChannel>());
-			public static Keyframe AddChannels(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.ADD_CHANNEL, trigger, Array.Empty<byte>(), channels);
-			public static Keyframe Switch(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.SWITCH, trigger, Array.Empty<byte>(), channels);
-			public static Keyframe Audio(byte[] audio, int trigger = 0) => new(KeyframeType.NOTE, trigger, audio, Array.Empty<AudioChannel>());
+			public static Keyframe Stop(int trigger = 0) => new(KeyframeType.STOP, trigger, [], []);
+			public static Keyframe AddChannels(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.ADD_CHANNEL, trigger, [], channels);
+			public static Keyframe Switch(int trigger = 0, params AudioChannel[] channels) => new(KeyframeType.SWITCH, trigger, [], channels);
+			public static Keyframe Audio(byte[] audio, int trigger = 0) => new(KeyframeType.NOTE, trigger, audio, []);
 		}
 		public enum KeyframeType {
 			NOTE        = 0b0001,
@@ -271,22 +208,17 @@ namespace ProceduralMusicLib {
 			return (byte)value;
 		}
 	}
-	public enum ChannelSwitches {
-		ADD,
-		REMOVE
-	}
 	public class ChanneledAudioTrack : ASoundEffectBasedAudioTrack {
 		int position = 0;
-		public List<ActiveAudioChannel> activeChannels;
+		public List<ActiveAudioChannel> activeChannels = [];
 		public AudioChannel[] defaultChannels;
-		public HashSet<int> triggers;
+		public HashSet<int> triggers = [];
 		public event Action OnTrackEnd;
-		public ChanneledAudioTrack(params AudioChannel[] defaultChannels) {
-			CreateSoundEffect(12000, AudioChannels.Stereo);
+		public ChanneledAudioTrack(int sampleRate, params AudioChannel[] defaultChannels) {
+			CreateSoundEffect(sampleRate, AudioChannels.Stereo);
 			this.defaultChannels = defaultChannels;
-			triggers = new();
-			activeChannels = new();
 		}
+		public ChanneledAudioTrack(params AudioChannel[] defaultChannels) : this(12000, defaultChannels) { }
 		public override void Dispose() {
 
 		}
@@ -310,10 +242,11 @@ namespace ProceduralMusicLib {
 			}
 		}
 		protected override void ReadAheadPutAChunkIntoTheBuffer() {
-			ProceduralMusicLibSystem._bufferToSubmit = _bufferToSubmit;
+#if DEBUG
+			ProceduralMusicLibTestSystem._bufferToSubmit = _bufferToSubmit;
+#endif
 			for (int i = 0; i < _bufferToSubmit.Length; i++) {
-				position++;
-				_bufferToSubmit[i] = ActiveAudioChannel.UpdateChannels(activeChannels, position, triggers);
+				_bufferToSubmit[i] = ActiveAudioChannel.UpdateChannels(activeChannels, ++position, triggers);
 			}
 			if (false) {
 				Stop(AudioStopOptions.Immediate);
@@ -321,7 +254,7 @@ namespace ProceduralMusicLib {
 				_soundEffectInstance.SubmitBuffer(_bufferToSubmit);
 			}
 			if (!activeChannels.Any()) {
-				OnTrackEnd();
+				OnTrackEnd?.Invoke();
 				Stop(AudioStopOptions.Immediate);
 			}
 		}

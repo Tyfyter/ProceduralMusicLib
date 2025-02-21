@@ -1,0 +1,63 @@
+{
+	"Chunks": {
+		"Start": {
+			"AudioPath": "Origins/Sounds/Music/Volume II/ADJUDICATE",
+			"Start": "0:00",
+			"End": "0:05"
+		},
+		"Philomena": {
+			"AudioPath": "Origins/Sounds/Music/Volume II/ADJUDICATE",
+			"Start": "0:05",
+			"End": "0:06"
+		},
+		"OtherPhilomena": {
+			"AudioPath": "Origins/Sounds/Music/Volume II/Alkahest",
+			"End": "0:16"
+		}
+	},
+	"Segments": {
+		"Start": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "Start"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Segments": [
+						"Loop"
+					]
+				}
+			]
+		},
+		"Loop": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "Philomena"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Trigger": 1,
+					"Segments": [
+						"OtherLoop"
+					]
+				}
+			]
+		},
+		"OtherLoop": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "OtherPhilomena"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Segments": [
+						"Start"
+					]
+				}
+			]
+		}
+	}
+}
