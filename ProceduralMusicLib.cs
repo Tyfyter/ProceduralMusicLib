@@ -3,7 +3,9 @@ using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Terraria;
 using Terraria.Audio;
@@ -17,6 +19,73 @@ namespace ProceduralMusicLib {
 	public class ProceduralMusicLib : Mod {
 		public ProceduralMusicLib() : base() {
 			MusicAutoloadingEnabled = false;
+			ReserveMusicID = typeof(MusicLoader).GetMethod(nameof(ReserveMusicID), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).CreateDelegate<Func<int>>(null);
+			musicByPath = (Dictionary<string, int>)typeof(MusicLoader).GetField(nameof(musicByPath), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
+			musicExtensions = (Dictionary<string, string>)typeof(MusicLoader).GetField(nameof(musicExtensions), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
+			MonoModHooks.Add(typeof(MusicLoader).GetMethod("LoadMusic", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), (Func<string, string, IAudioTrack> orig, string path, string extension) => {
+				if (extension == "json") {
+					JSONAudioTrack track = new(path);
+					jsonmusicByPath.Add(path, track);
+					return track;
+				}
+				return orig(path, extension);
+			});
+		}
+		Func<int> ReserveMusicID;
+		Dictionary<string, int> musicByPath;
+		Dictionary<string, string> musicExtensions;
+		Dictionary<string, JSONAudioTrack> jsonmusicByPath = [];
+		public enum CallType {
+			AddMusic,
+			ReplaceMusic,
+			SetTrigger
+		}
+		public override object Call(params object[] args) => Call(Enum.Parse<CallType>((string)args[0], true), args[1..]);
+		public object Call(CallType callType, params object[] args) {
+			string musicPath;
+			if (args[0] is Mod mod) {
+				musicPath = mod.Name + "/" + (string)args[1];
+				args = args[2..];
+			} else {
+				musicPath = (string)args[0];
+				args = args[1..];
+			}
+			switch (callType) {
+				case CallType.AddMusic: {
+					if (musicByPath.TryGetValue(musicPath, out int id)) return id;
+					id = ReserveMusicID();
+					musicByPath[musicPath] = id;
+					musicExtensions[musicPath] = "json";
+					return id;
+				}
+				case CallType.ReplaceMusic: {
+					if (!musicByPath.TryGetValue(musicPath, out int id)) goto case CallType.AddMusic;
+
+					if (!(Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks })) {
+						return null;
+					}
+					if (audioTracks[id] is not null) {
+						audioTracks[id].Stop(AudioStopOptions.Immediate);
+						JSONAudioTrack track = new(musicPath);
+						jsonmusicByPath.Add(musicPath, track);
+						audioTracks[id] = track;
+					}
+					musicByPath[musicPath] = id;
+					musicExtensions[musicPath] = "json";
+					return id;
+				}
+				case CallType.SetTrigger: {
+					if (jsonmusicByPath.TryGetValue(musicPath, out JSONAudioTrack track)) {
+						if (args.Length > 1 && args[1] is bool value && !value) {
+							track.UnTrigger((int)args[0]);
+						} else {
+							track.Trigger((int)args[0]);
+						}
+					}
+					return null;
+				}
+			}
+			return null;
 		}
 		public static Func<int, byte> BuildSquareSequence(params (int freq, int dur)[] notes) {
 			int totalLength = 0;
@@ -89,9 +158,6 @@ namespace ProceduralMusicLib {
 			position = 0;
 		}
 		protected override void ReadAheadPutAChunkIntoTheBuffer() {
-#if DEBUG
-			ProceduralMusicLibTestSystem._bufferToSubmit = _bufferToSubmit;
-#endif
 			for (int i = 0; i < _bufferToSubmit.Length; i++) {
 				_bufferToSubmit[i] = procedure(++position);
 			}
@@ -242,9 +308,6 @@ namespace ProceduralMusicLib {
 			}
 		}
 		protected override void ReadAheadPutAChunkIntoTheBuffer() {
-#if DEBUG
-			ProceduralMusicLibTestSystem._bufferToSubmit = _bufferToSubmit;
-#endif
 			for (int i = 0; i < _bufferToSubmit.Length; i++) {
 				_bufferToSubmit[i] = ActiveAudioChannel.UpdateChannels(activeChannels, ++position, triggers);
 			}
