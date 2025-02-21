@@ -61,10 +61,7 @@ namespace ProceduralMusicLib {
 				case CallType.ReplaceMusic: {
 					if (!musicByPath.TryGetValue(musicPath, out int id)) goto case CallType.AddMusic;
 
-					if (!(Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks })) {
-						return null;
-					}
-					if (audioTracks[id] is not null) {
+					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
 						audioTracks[id].Stop(AudioStopOptions.Immediate);
 						JSONAudioTrack track = new(musicPath);
 						jsonmusicByPath.Add(musicPath, track);
