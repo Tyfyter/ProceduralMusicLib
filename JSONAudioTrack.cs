@@ -169,11 +169,11 @@ namespace ProceduralMusicLib {
 						foundFormat = true;
 						break;
 						case "data":
-						samples = new byte[Math.Min(binaryReader.BaseStream.Length - binaryReader.BaseStream.Position, chunkSize / 2)];
+						samples = new byte[Math.Min(binaryReader.BaseStream.Length - binaryReader.BaseStream.Position, chunkSize)];
 						binaryReader.ReadInt32();
 						binaryReader.ReadInt32();
-						for (int i = 0; i < samples.Length; i++) {
-							binaryReader.ReadByte();// I have no idea why this works, or what data I'm throwing out
+						for (int i = 0; i < samples.Length; i += 2) {
+							samples[i + 1] = (byte)(255 - binaryReader.ReadByte());
 							samples[i] = binaryReader.ReadByte();
 						}
 						foundData = true;

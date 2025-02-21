@@ -1,18 +1,19 @@
 {
 	"Chunks": {
 		"Start": {
-			"AudioPath": "Origins/Sounds/Music/Volume II/ADJUDICATE",
+			"AudioPath": "Origins/Sounds/Music/Volume II/Alkahest",
 			"Start": "0:00",
 			"End": "0:05"
 		},
 		"Philomena": {
 			"AudioPath": "Origins/Sounds/Music/Volume II/ADJUDICATE",
 			"Start": "0:05",
-			"End": "0:06"
+			"End": "0:10"
 		},
 		"OtherPhilomena": {
-			"AudioPath": "Origins/Sounds/Music/Volume II/Alkahest",
-			"End": "0:16"
+			"AudioPath": "ProceduralMusicLib/ADJUDICATE",
+			"Start": "0:05",
+			"End": "0:10"
 		}
 	},
 	"Segments": {

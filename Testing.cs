@@ -14,21 +14,26 @@ namespace ProceduralMusicLib {
 		public static ChanneledAudioTrack testTrack;
 		public override void Load() {
 			if (Main.audioSystem is LegacyAudioSystem audioSystem) {
-				audioSystem.AudioTracks[MusicID.AltOverworldDay] = audioSystem.DefaultTrackByIndex[MusicID.AltOverworldDay] = testTrack = new JSONAudioTrack("ProceduralMusicLib/TestJSONTrack");
+				audioSystem.AudioTracks[MusicID.Crimson] = audioSystem.DefaultTrackByIndex[MusicID.Crimson] = testTrack = new JSONAudioTrack("ProceduralMusicLib/TestJSONTrack");
 			}
 			keybind = KeybindLoader.RegisterKeybind(Mod, "TheKeybind", Keys.NumPad1);
 		}
 		static ModKeybind keybind;
 		public override void ProcessTriggers(TriggersSet triggersSet) {
 			if (keybind is not null && keybind.JustPressed && Main.audioSystem is LegacyAudioSystem audioSystem) {
-				audioSystem.AudioTracks[MusicID.AltOverworldDay] = audioSystem.DefaultTrackByIndex[MusicID.AltOverworldDay] = testTrack = new JSONAudioTrack("ProceduralMusicLib/TestJSONTrack");
+				audioSystem.AudioTracks[MusicID.Crimson] = audioSystem.DefaultTrackByIndex[MusicID.Crimson] = testTrack = new JSONAudioTrack("ProceduralMusicLib/TestJSONTrack");
+			}
+			if (Main.mouseY > 0.5 * Main.screenHeight) {
+				TestPlayer.testTrack.Trigger(1);
+			} else {
+				TestPlayer.testTrack.UnTrigger(1);
 			}
 		}
 	}
 	public class ProceduralMusicLibTestSystem : ModSystem {
 		internal static byte[] _bufferToSubmit;
 		int offset = 0;
-		/*public override void PostDrawInterface(SpriteBatch spriteBatch) {
+		public override void PostDrawInterface(SpriteBatch spriteBatch) {
 			if (_bufferToSubmit is null) return;
 			float xPosition = 0;
 			int yPosition = 512;
@@ -56,7 +61,7 @@ namespace ProceduralMusicLib {
 				spriteBatch.Draw(pixel, pos, frame, color, diff.ToRotation(), Vector2.Zero, new Vector2(diff.Length(), 1), 0, 0);
 				xPosition += prog;
 			}
-		}*/
+		}
 	}
 }
 
