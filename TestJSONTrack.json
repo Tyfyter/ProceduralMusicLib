@@ -1,0 +1,64 @@
+{
+	"Chunks": {
+		"Start": {
+			"AudioPath": "ProceduralMusicLib/Alkahest",
+			"Start": "0:00",
+			"End": "0:10"
+		},
+		"Philomena": {
+			"AudioPath": "ProceduralMusicLib/ADJUDICATE",
+			"Start": "0:05",
+			"End": "0:10"
+		},
+		"OtherPhilomena": {
+			"AudioPath": "ProceduralMusicLib/ADJUDICATE",
+			"Start": "0:05",
+			"End": "0:10"
+		}
+	},
+	"Segments": {
+		"Start": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "Start"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Segments": [
+						"Loop"
+					]
+				}
+			]
+		},
+		"Loop": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "Philomena"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Trigger": 1,
+					"Segments": [
+						"OtherLoop"
+					]
+				}
+			]
+		},
+		"OtherLoop": {
+			"Keyframes": [
+				{
+					"Type": "Audio",
+					"Chunk": "OtherPhilomena"
+				},
+				{
+					"Type": "Switch_Segment",
+					"Segments": [
+						"Start"
+					]
+				}
+			]
+		}
+	}
+}

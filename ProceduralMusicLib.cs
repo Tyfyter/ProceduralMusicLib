@@ -1,4 +1,4 @@
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -24,8 +24,8 @@ namespace ProceduralMusicLib {
 			musicExtensions = (Dictionary<string, string>)typeof(MusicLoader).GetField(nameof(musicExtensions), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
 			MonoModHooks.Add(typeof(MusicLoader).GetMethod("LoadMusic", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), (Func<string, string, IAudioTrack> orig, string path, string extension) => {
 				if (extension == "json") {
-					JSONAudioTrack track = new(path);
-					jsonmusicByPath.Add(path, track);
+					JSONAudioTrack track = JSONAudioTrack.FromFile(path);
+					AddJSONTrack(path, track);
 					return track;
 				}
 				return orig(path, extension);
@@ -34,13 +34,68 @@ namespace ProceduralMusicLib {
 		Func<int> ReserveMusicID;
 		Dictionary<string, int> musicByPath;
 		Dictionary<string, string> musicExtensions;
-		Dictionary<string, JSONAudioTrack> jsonmusicByPath = [];
+		Dictionary<string, JSONAudioTrack> jsonMusicByPath = [];
+		List<FileSystemWatcher> fileSystemWatchers = [];
+		public void AddJSONTrack(string musicPath, JSONAudioTrack track) {
+			if (!jsonMusicByPath.ContainsKey(musicPath)) {
+				FileSystemWatcher trackDescriptorFileWatcher = new();
+				string[] path = musicPath.Split('/');
+				trackDescriptorFileWatcher.Path = Path.Combine([Program.SavePathShared, "ModSources", ..path[..^1]]);
+				trackDescriptorFileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName;
+				trackDescriptorFileWatcher.Filter = path[^1] + ".json";
+				trackDescriptorFileWatcher.IncludeSubdirectories = false;
+
+				void ReloadTrack() {
+					if (!musicByPath.TryGetValue(musicPath, out int id)) return;
+
+					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
+						IAudioTrack oldTrack = audioTracks[id];
+						Main.QueueMainThreadAction(() => oldTrack.Stop(AudioStopOptions.Immediate));
+						JSONAudioTrack track = JSONAudioTrack.FromJSON(File.ReadAllText(Path.Combine(trackDescriptorFileWatcher.Path, trackDescriptorFileWatcher.Filter)));
+						audioTracks[id] = track;
+					}
+					Utils.LogAndChatAndConsoleInfoMessage($"Music file {musicPath} was changed, reloading track");
+				}
+
+				trackDescriptorFileWatcher.Changed += (a, b) => {
+					ReloadTrack();
+				};
+				trackDescriptorFileWatcher.Renamed += (a, b) => {
+					if (b.Name == trackDescriptorFileWatcher.Filter) {
+						ReloadTrack();
+					} else if (!b.Name.EndsWith(".TMP") || !b.Name.StartsWith(trackDescriptorFileWatcher.Filter)) {
+						trackDescriptorFileWatcher.EnableRaisingEvents = false;
+					}
+				};
+
+				// Begin watching.
+				trackDescriptorFileWatcher.EnableRaisingEvents = true;
+				fileSystemWatchers.Add(trackDescriptorFileWatcher);
+			}
+			jsonMusicByPath[musicPath] = track;
+		}
 		public enum CallType {
+			/// <summary>
+			/// Adds a track, use « AddMusic Mod Path » or « AddMusic Path »
+			/// </summary>
 			AddMusic,
+			/// <summary>
+			/// Replaces a track with a json track at the same path, use « ModifyMusic Mod Path » or « ModifyMusic Path »
+			/// </summary>
+			ModifyMusic,
+			/// <summary>
+			/// Replaces a track with a json track, use « ReplaceMusic Mod Path TrackID » or « ReplaceMusic Path TrackID »
+			/// </summary>
 			ReplaceMusic,
+			/// <summary>
+			/// Sets or unsets a trigger in a track, use « SetTrigger Mod Path TriggerID [false] » or « SetTrigger Path TriggerID [false] »
+			/// </summary>
 			SetTrigger
 		}
-		public override object Call(params object[] args) => Call(Enum.Parse<CallType>((string)args[0], true), args[1..]);
+		public override object Call(params object[] args) => Call(
+			args[0] is CallType callType ? callType : Enum.Parse<CallType>((string)args[0], true),
+			args[1..]
+		);
 		public object Call(CallType callType, params object[] args) {
 			string musicPath;
 			if (args[0] is Mod mod) {
@@ -58,13 +113,35 @@ namespace ProceduralMusicLib {
 					musicExtensions[musicPath] = "json";
 					return id;
 				}
-				case CallType.ReplaceMusic: {
+				case CallType.ModifyMusic: {
 					if (!musicByPath.TryGetValue(musicPath, out int id)) goto case CallType.AddMusic;
 
 					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
 						audioTracks[id].Stop(AudioStopOptions.Immediate);
-						JSONAudioTrack track = new(musicPath);
-						jsonmusicByPath.Add(musicPath, track);
+						JSONAudioTrack track = JSONAudioTrack.FromFile(musicPath);
+						AddJSONTrack(musicPath, track);
+						audioTracks[id] = track;
+					}
+					musicByPath[musicPath] = id;
+					musicExtensions[musicPath] = "json";
+					return id;
+				}
+				case CallType.ReplaceMusic: {
+					int id;
+					if (args[0] is int @int) {
+						id = @int;
+					} else if (args[0] is short @short) {
+						id = @short;
+					} else if (args[0] is ushort @ushort) {
+						id = @ushort;
+					} else {
+						throw new ArgumentException($"Invalid numeric type {args[0].GetType()}", "TrackID");
+					}
+
+					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
+						audioTracks[id].Stop(AudioStopOptions.Immediate);
+						JSONAudioTrack track = JSONAudioTrack.FromFile(musicPath);
+						AddJSONTrack(musicPath, track);
 						audioTracks[id] = track;
 					}
 					musicByPath[musicPath] = id;
@@ -72,7 +149,7 @@ namespace ProceduralMusicLib {
 					return id;
 				}
 				case CallType.SetTrigger: {
-					if (jsonmusicByPath.TryGetValue(musicPath, out JSONAudioTrack track)) {
+					if (jsonMusicByPath.TryGetValue(musicPath, out JSONAudioTrack track)) {
 						if (args.Length > 1 && args[1] is bool value && !value) {
 							track.UnTrigger((int)args[0]);
 						} else {

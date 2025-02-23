@@ -18,8 +18,9 @@ using XPT.Core.Audio.MP3Sharp;
 
 namespace ProceduralMusicLib {
 	public class JSONAudioTrack : ChanneledAudioTrack {
-		public JSONAudioTrack(string fileName) {
-			string text = Encoding.UTF8.GetString(ModContent.GetFileBytes(fileName + ".json")).Replace("\r", "").Replace("\t", "").Replace("\n", "");
+		public static JSONAudioTrack FromFile(string fileName) => FromJSON(Encoding.UTF8.GetString(ModContent.GetFileBytes(fileName + ".json")));
+		public static JSONAudioTrack FromJSON(string text) => new(text.Replace("\r", "").Replace("\t", "").Replace("\n", ""));
+		JSONAudioTrack(string text) {
 			AudioTrackDescriptor descriptor = new();
 			JsonConvert.PopulateObject(text, descriptor, new JsonSerializerSettings {
 				Formatting = Formatting.Indented,
