@@ -22,6 +22,7 @@ namespace ProceduralMusicLib {
 			ReserveMusicID = typeof(MusicLoader).GetMethod(nameof(ReserveMusicID), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).CreateDelegate<Func<int>>(null);
 			musicByPath = (Dictionary<string, int>)typeof(MusicLoader).GetField(nameof(musicByPath), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
 			musicExtensions = (Dictionary<string, string>)typeof(MusicLoader).GetField(nameof(musicExtensions), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
+			musicSkipsVolumeRemap = (Dictionary<int, bool>)typeof(MusicLoader).GetField(nameof(musicSkipsVolumeRemap), BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null);
 			MonoModHooks.Add(typeof(MusicLoader).GetMethod("LoadMusic", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), (Func<string, string, IAudioTrack> orig, string path, string extension) => {
 				if (extension == "json") {
 					JSONAudioTrack track = JSONAudioTrack.FromFile(path);
@@ -34,6 +35,7 @@ namespace ProceduralMusicLib {
 		Func<int> ReserveMusicID;
 		Dictionary<string, int> musicByPath;
 		Dictionary<string, string> musicExtensions;
+		Dictionary<int, bool> musicSkipsVolumeRemap;
 		Dictionary<string, JSONAudioTrack> jsonMusicByPath = [];
 		List<FileSystemWatcher> fileSystemWatchers = [];
 		public void AddJSONTrack(string musicPath, JSONAudioTrack track) {
@@ -98,9 +100,11 @@ namespace ProceduralMusicLib {
 		);
 		public object Call(CallType callType, params object[] args) {
 			string musicPath;
+			bool skipVolumeRemap = true;
 			if (args[0] is Mod mod) {
 				musicPath = mod.Name + "/" + (string)args[1];
 				args = args[2..];
+				skipVolumeRemap = mod.MusicSkipsVolumeRemap;
 			} else {
 				musicPath = (string)args[0];
 				args = args[1..];
@@ -111,6 +115,7 @@ namespace ProceduralMusicLib {
 					id = ReserveMusicID();
 					musicByPath[musicPath] = id;
 					musicExtensions[musicPath] = "json";
+					musicSkipsVolumeRemap[id] = skipVolumeRemap;
 					return id;
 				}
 				case CallType.ModifyMusic: {
@@ -320,14 +325,14 @@ namespace ProceduralMusicLib {
 		}
 		public static byte UpdateChannels(List<ActiveAudioChannel> activeChannels, int position, HashSet<int> triggers) {
 			int value = 0;
-			List<AudioChannel> switches = new();
+			List<AudioChannel> switches = [];
 			for (int c = 0; c < activeChannels.Count; c++) {
 				ActiveAudioChannel activeChannel = activeChannels[c];
-				List<AudioChannel?> newSwitches = new();
+				List<AudioChannel?> newSwitches = [];
 				int oldProgress = activeChannel.progress;
 				value += activeChannel.audioChannel.Update(ref activeChannel.progress, position - activeChannel.frameStart, triggers, newSwitches);
 
-				if (oldProgress != activeChannel.progress) activeChannel.frameStart = position;
+				if (oldProgress != activeChannel.progress) activeChannel.frameStart = position + 1;
 				bool removed = false;
 				for (int i = 0; i < newSwitches.Count; i++) {
 					if (newSwitches[i].HasValue) {
@@ -346,6 +351,29 @@ namespace ProceduralMusicLib {
 				activeChannels.Add(new (switches[i], position));
 			}
 			return (byte)value;
+		}
+	}
+	public class BufferAudioTrack : ASoundEffectBasedAudioTrack {
+		int position = 0;
+		byte[] buffer;
+		public BufferAudioTrack(int sampleRate, AudioChannels channels, byte[] buffer) {
+			CreateSoundEffect(sampleRate, channels);
+			this.buffer = buffer;
+		}
+
+		public override void Dispose() {
+
+		}
+
+		public override void Reuse() {
+			position = 0;
+		}
+		protected override void ReadAheadPutAChunkIntoTheBuffer() {
+			for (int i = 0; i < _bufferToSubmit.Length; i++) {
+				_bufferToSubmit[i] = buffer[position];
+				position = (position + 1) % buffer.Length;
+			}
+			_soundEffectInstance.SubmitBuffer(_bufferToSubmit);
 		}
 	}
 	public class ChanneledAudioTrack : ASoundEffectBasedAudioTrack {
@@ -383,16 +411,16 @@ namespace ProceduralMusicLib {
 		}
 		protected override void ReadAheadPutAChunkIntoTheBuffer() {
 			for (int i = 0; i < _bufferToSubmit.Length; i++) {
-				_bufferToSubmit[i] = ActiveAudioChannel.UpdateChannels(activeChannels, ++position, triggers);
+				_bufferToSubmit[i] = ActiveAudioChannel.UpdateChannels(activeChannels, position++, triggers);
 			}
 			if (false) {
 				Stop(AudioStopOptions.Immediate);
 			} else {
 				_soundEffectInstance.SubmitBuffer(_bufferToSubmit);
 			}
-			if (!activeChannels.Any()) {
+			if (activeChannels.Count == 0) {
 				OnTrackEnd?.Invoke();
-				Stop(AudioStopOptions.Immediate);
+				//Stop(AudioStopOptions.Immediate);
 			}
 		}
 	}

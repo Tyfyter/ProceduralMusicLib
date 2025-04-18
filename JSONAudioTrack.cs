@@ -43,7 +43,7 @@ namespace ProceduralMusicLib {
 			Dictionary<string, byte[]> chunks = [];
 			foreach (KeyValuePair<string, AudioChunkData> item in descriptor.Chunks) {
 				ExtractedAudioTrack track = tracks[item.Value.AudioPath];
-				Index end = item.Value.End == default ? ^1 : (int)(track.SampleRate * item.Value.End.TotalSeconds);
+				Index end = item.Value.End == default ? ^0 : (int)(track.SampleRate * item.Value.End.TotalSeconds);
 				chunks.Add(item.Key, track.Samples[(int)(track.SampleRate * item.Value.Start.TotalSeconds)..end]);
 			}
 			Dictionary<string, AudioChannel> segments = [];
@@ -185,14 +185,15 @@ namespace ProceduralMusicLib {
 				return new(samples, (int)sampleRate, channels);
 			};
 			Readers["ogg"] = (path) => {
-				using VorbisReader vorbisReader = new(new MemoryStream(ModContent.GetFileBytes(path)));
-				float[] temporaryBuffer = new float[vorbisReader.TotalSamples];
-				vorbisReader.ReadSamples(temporaryBuffer, 0, temporaryBuffer.Length);
+				using MemoryStream stream = new(ModContent.GetFileBytes(path));
+				using VorbisReader vorbisReader = new(stream);
+				float[] temporaryBuffer = new float[vorbisReader.TotalSamples * vorbisReader.Channels];
+				int totalSamples = vorbisReader.ReadSamples(temporaryBuffer, 0, temporaryBuffer.Length);
 				byte[] samples = new byte[temporaryBuffer.Length * 2];//new byte[temporaryBuffer.Length * 2];
 				for (int i = 0; i < temporaryBuffer.Length; i++) {
 					short num = (short)(temporaryBuffer[i] * 32767f);
-					samples[i * 2 + 1] = (byte)num;
-					samples[i * 2] = (byte)(num >> 8);
+					samples[i * 2] = (byte)num;
+					samples[i * 2 + 1] = (byte)(num >> 8);
 				}
 				/*for (int i = 0; i < temporaryBuffer.Length - 1; i += 2) {
 					//short num = (short)(temporaryBuffer[i / 2] * 32767f);
