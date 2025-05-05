@@ -13,6 +13,7 @@ using Terraria.GameContent;
 using Terraria.GameContent.Tile_Entities;
 using Terraria.ID;
 using Terraria.ModLoader;
+using XPT.Core.Audio.MP3Sharp.Decoding;
 using static ProceduralMusicLib.AudioBuilder;
 
 namespace ProceduralMusicLib {
@@ -32,12 +33,12 @@ namespace ProceduralMusicLib {
 				return orig(path, extension);
 			});
 		}
-		Func<int> ReserveMusicID;
-		Dictionary<string, int> musicByPath;
-		Dictionary<string, string> musicExtensions;
-		Dictionary<int, bool> musicSkipsVolumeRemap;
-		Dictionary<string, JSONAudioTrack> jsonMusicByPath = [];
-		List<FileSystemWatcher> fileSystemWatchers = [];
+		readonly Func<int> ReserveMusicID;
+		readonly Dictionary<string, int> musicByPath;
+		readonly Dictionary<string, string> musicExtensions;
+		readonly Dictionary<int, bool> musicSkipsVolumeRemap;
+		readonly Dictionary<string, JSONAudioTrack> jsonMusicByPath = [];
+		readonly List<FileSystemWatcher> fileSystemWatchers = [];
 		public void AddJSONTrack(string musicPath, JSONAudioTrack track) {
 			if (!jsonMusicByPath.ContainsKey(musicPath)) {
 				FileSystemWatcher trackDescriptorFileWatcher = new();
@@ -140,7 +141,11 @@ namespace ProceduralMusicLib {
 					} else if (args[0] is ushort @ushort) {
 						id = @ushort;
 					} else {
-						throw new ArgumentException($"Invalid numeric type {args[0].GetType()}", "TrackID");
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable CA2208 // Instantiate argument exceptions correctly
+						throw new ArgumentException($"Invalid numeric type {args[0].GetType()}, supported types are int, short, and ushort", "TrackID");
+#pragma warning restore CA2208 // Instantiate argument exceptions correctly
+#pragma warning restore IDE0079 // Remove unnecessary suppression
 					}
 
 					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
@@ -168,7 +173,7 @@ namespace ProceduralMusicLib {
 		}
 		public static Func<int, byte> BuildSquareSequence(params (int freq, int dur)[] notes) {
 			int totalLength = 0;
-			List<Func<int, byte>> funcs = new();
+			List<Func<int, byte>> funcs = [];
 			for (int i = 0; i < notes.Length; i++) {
 				int currentLength = totalLength;
 				int dur = notes[i].dur;
@@ -230,7 +235,7 @@ namespace ProceduralMusicLib {
 			CreateSoundEffect(12000, AudioChannels.Stereo);
 		}
 		public override void Dispose() {
-
+			GC.SuppressFinalize(this);
 		}
 
 		public override void Reuse() {
@@ -277,7 +282,7 @@ namespace ProceduralMusicLib {
 		public AudioChannel Clone() {
 			return this with { keyframes = keyframes.ToArray() };
 		}
-		public int Update(ref int progress, int position, HashSet<int> triggers, [Out] List<AudioChannel?> switches) {
+		public readonly int Update(ref int progress, int position, HashSet<int> triggers, [Out] List<AudioChannel?> switches) {
 			int tries = 0;
 			while (++tries < 100) {
 				if (progress >= keyframes.Length) {
@@ -314,15 +319,11 @@ namespace ProceduralMusicLib {
 			return 0;
 		}
 	}
-	public class ActiveAudioChannel {
-		readonly AudioChannel audioChannel;
-		int progress;
-		int frameStart;
-		public ActiveAudioChannel(AudioChannel audioChannel, int position) {
-			this.audioChannel = audioChannel;
-			progress = 0;
-			frameStart = position;
-		}
+	public class ActiveAudioChannel(AudioChannel audioChannel, int position) {
+		readonly AudioChannel audioChannel = audioChannel;
+		int progress = 0;
+		int frameStart = position;
+
 		public static byte UpdateChannels(List<ActiveAudioChannel> activeChannels, int position, HashSet<int> triggers) {
 			int value = 0;
 			List<AudioChannel> switches = [];
@@ -362,7 +363,8 @@ namespace ProceduralMusicLib {
 		}
 
 		public override void Dispose() {
-
+			buffer = null;
+			GC.SuppressFinalize(this);
 		}
 
 		public override void Reuse() {
@@ -388,7 +390,11 @@ namespace ProceduralMusicLib {
 		}
 		public ChanneledAudioTrack(params AudioChannel[] defaultChannels) : this(12000, defaultChannels) { }
 		public override void Dispose() {
-
+			activeChannels = null;
+			defaultChannels = null;
+			triggers = null;
+			OnTrackEnd = null;
+			GC.SuppressFinalize(this);
 		}
 
 		public override void Reuse() {

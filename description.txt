@@ -1,1 +1,1 @@
-Procedural Music Library is a pretty cool mod, it does...this. Modify this file with a description of your mod.
+Procedural Music Library allows modders to create music tracks in code and splice together whole or partial audio files to create dynamic tracks defined with JSON files.
