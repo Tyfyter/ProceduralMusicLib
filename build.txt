@@ -1,5 +1,5 @@
 displayName = Procedural Music Library
 author = Moonlight Glint
-version = 1.0
+version = 1.0.0.1
 side = NoSync
 homepage = https://tyfyter.github.io/?ProceduralMusicLib

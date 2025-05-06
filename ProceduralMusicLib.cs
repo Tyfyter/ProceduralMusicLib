@@ -42,38 +42,41 @@ namespace ProceduralMusicLib {
 		public void AddJSONTrack(string musicPath, JSONAudioTrack track) {
 			if (!jsonMusicByPath.ContainsKey(musicPath)) {
 				FileSystemWatcher trackDescriptorFileWatcher = new();
-				string[] path = musicPath.Split('/');
-				trackDescriptorFileWatcher.Path = Path.Combine([Program.SavePathShared, "ModSources", ..path[..^1]]);
-				trackDescriptorFileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName;
-				trackDescriptorFileWatcher.Filter = path[^1] + ".json";
-				trackDescriptorFileWatcher.IncludeSubdirectories = false;
+				string[] pathSegs = musicPath.Split('/');
+				string path = Path.Combine([Program.SavePathShared, "ModSources", ..pathSegs[..^1]]);
+				if (Directory.Exists(path)) {
+					trackDescriptorFileWatcher.Path = path;
+					trackDescriptorFileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName;
+					trackDescriptorFileWatcher.Filter = pathSegs[^1] + ".json";
+					trackDescriptorFileWatcher.IncludeSubdirectories = false;
 
-				void ReloadTrack() {
-					if (!musicByPath.TryGetValue(musicPath, out int id)) return;
+					void ReloadTrack() {
+						if (!musicByPath.TryGetValue(musicPath, out int id)) return;
 
-					if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
-						IAudioTrack oldTrack = audioTracks[id];
-						Main.QueueMainThreadAction(() => oldTrack.Stop(AudioStopOptions.Immediate));
-						JSONAudioTrack track = JSONAudioTrack.FromJSON(File.ReadAllText(Path.Combine(trackDescriptorFileWatcher.Path, trackDescriptorFileWatcher.Filter)));
-						audioTracks[id] = track;
+						if (Main.audioSystem is LegacyAudioSystem { AudioTracks: IAudioTrack[] audioTracks } && audioTracks[id] is not null) {
+							IAudioTrack oldTrack = audioTracks[id];
+							Main.QueueMainThreadAction(() => oldTrack.Stop(AudioStopOptions.Immediate));
+							JSONAudioTrack track = JSONAudioTrack.FromJSON(File.ReadAllText(Path.Combine(trackDescriptorFileWatcher.Path, trackDescriptorFileWatcher.Filter)));
+							audioTracks[id] = track;
+						}
+						Utils.LogAndChatAndConsoleInfoMessage($"Music file {musicPath} was changed, reloading track");
 					}
-					Utils.LogAndChatAndConsoleInfoMessage($"Music file {musicPath} was changed, reloading track");
-				}
 
-				trackDescriptorFileWatcher.Changed += (a, b) => {
-					ReloadTrack();
-				};
-				trackDescriptorFileWatcher.Renamed += (a, b) => {
-					if (b.Name == trackDescriptorFileWatcher.Filter) {
+					trackDescriptorFileWatcher.Changed += (a, b) => {
 						ReloadTrack();
-					} else if (!b.Name.EndsWith(".TMP") || !b.Name.StartsWith(trackDescriptorFileWatcher.Filter)) {
-						trackDescriptorFileWatcher.EnableRaisingEvents = false;
-					}
-				};
+					};
+					trackDescriptorFileWatcher.Renamed += (a, b) => {
+						if (b.Name == trackDescriptorFileWatcher.Filter) {
+							ReloadTrack();
+						} else if (!b.Name.EndsWith(".TMP") || !b.Name.StartsWith(trackDescriptorFileWatcher.Filter)) {
+							trackDescriptorFileWatcher.EnableRaisingEvents = false;
+						}
+					};
 
-				// Begin watching.
-				trackDescriptorFileWatcher.EnableRaisingEvents = true;
-				fileSystemWatchers.Add(trackDescriptorFileWatcher);
+					// Begin watching.
+					trackDescriptorFileWatcher.EnableRaisingEvents = true;
+					fileSystemWatchers.Add(trackDescriptorFileWatcher);
+				}
 			}
 			jsonMusicByPath[musicPath] = track;
 		}
