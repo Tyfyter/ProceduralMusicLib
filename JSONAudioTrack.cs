@@ -13,6 +13,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Terraria;
 using Terraria.ModLoader;
 using XPT.Core.Audio.MP3Sharp;
 
@@ -43,8 +44,8 @@ namespace ProceduralMusicLib {
 			Dictionary<string, byte[]> chunks = [];
 			foreach (KeyValuePair<string, AudioChunkData> item in descriptor.Chunks) {
 				ExtractedAudioTrack track = tracks[item.Value.AudioPath];
-				Index end = item.Value.End == default ? ^0 : (int)(track.SampleRate * item.Value.End.TotalSeconds);
-				chunks.Add(item.Key, track.Samples[(int)(track.SampleRate * item.Value.Start.TotalSeconds)..end]);
+				Index end = item.Value.End == default ? ^0 : item.Value.End.GetSample(track.SampleRate);
+				chunks.Add(item.Key, track.Samples[item.Value.Start.GetSample(track.SampleRate)..end]);
 			}
 			Dictionary<string, AudioChannel> segments = [];
 			foreach (KeyValuePair<string, AudioSegmentsData> item in descriptor.Segments) {
@@ -65,28 +66,59 @@ namespace ProceduralMusicLib {
 			[DefaultValue("Start")]
 			public string Start = "Start";
 		}
+		public struct CutPosition {
+			int? sample;
+			TimeSpan time;
+			public readonly int GetSample(int sampleRate) => sample ?? (int)(sampleRate * time.TotalSeconds);
+			public static CutPosition Parse(string text) {
+				if (text.EndsWith("s", StringComparison.InvariantCultureIgnoreCase)) return new() {
+					sample = int.Parse(text[..^1])
+				};
+				string[] inputs = text.Trim().Split(':');
+				if (inputs.Length == 2 && int.TryParse(inputs[0], out int mns) && double.TryParse(inputs[1], out double scs)) {
+					return new() {
+						time = TimeSpan.FromMinutes(mns) + TimeSpan.FromSeconds(scs)
+					};
+				}
+				throw new InvalidDataException($"Invalid cut position: {text}");
+			}
+			public static bool TryParse(string text, out CutPosition position) {
+				try {
+					position = Parse(text);
+					return true;
+				} catch {
+					position = default;
+					return false;
+				}
+			}
+			public override readonly string ToString() {
+				if (sample.HasValue) return $"{sample.Value}s";
+				return $"{time.Minutes}:{time.TotalSeconds - time.Minutes * 60}";
+			}
+			public override readonly bool Equals([NotNullWhen(true)] object obj) => obj is CutPosition other && sample.Equals(other.sample) && time.Equals(other.time);
+			public override readonly int GetHashCode() => HashCode.Combine(sample, time);
+			public static bool operator ==(CutPosition left, CutPosition right) => left.Equals(right);
+			public static bool operator !=(CutPosition left, CutPosition right) => !(left == right);
+		}
 		public class AudioChunkData {
 			public string AudioPath;
-			[JsonConverter(typeof(ShortTimeSpanConverter))]
-			public TimeSpan Start;
-			[JsonConverter(typeof(ShortTimeSpanConverter))]
-			public TimeSpan End;
-			public class ShortTimeSpanConverter : JsonConverter {
+			[JsonConverter(typeof(CutPositionConverter))]
+			public CutPosition Start;
+			[JsonConverter(typeof(CutPositionConverter))]
+			public CutPosition End;
+			public class CutPositionConverter : JsonConverter {
 				public override bool CanConvert(Type objectType) {
 					throw new NotImplementedException();
 				}
-				public override object ReadJson(JsonReader reader, Type objectType, object existingValue, Newtonsoft.Json.JsonSerializer serializer) {
+				public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer) {
 					if (reader.Value is string text) {
-						string[] inputs = text.Trim().Split(':');
-						if (inputs.Length == 2 && int.TryParse(inputs[0], out int mns) && double.TryParse(inputs[1], out double scs)) {
-							return TimeSpan.FromMinutes(mns) + TimeSpan.FromSeconds(scs);
-						}
+						return CutPosition.Parse(text);
 					}
 					throw new InvalidDataException();
 				}
-				public override void WriteJson(JsonWriter writer, object value, Newtonsoft.Json.JsonSerializer serializer) {
-					if (value is TimeSpan time) {
-						writer.WriteValue($"{time.Minutes}:{time.TotalSeconds - time.Minutes * 60}");
+				public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) {
+					if (value is CutPosition time) {
+						writer.WriteValue(time.ToString());
 						return;
 					}
 					throw new InvalidDataException();
