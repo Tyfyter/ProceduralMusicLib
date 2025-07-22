@@ -44,8 +44,8 @@ namespace ProceduralMusicLib {
 			Dictionary<string, byte[]> chunks = [];
 			foreach (KeyValuePair<string, AudioChunkData> item in descriptor.Chunks) {
 				ExtractedAudioTrack track = tracks[item.Value.AudioPath];
-				Index end = item.Value.End == default ? ^0 : item.Value.End.GetSample(track.SampleRate);
-				chunks.Add(item.Key, track.Samples[item.Value.Start.GetSample(track.SampleRate)..end]);
+				Index end = item.Value.End == default ? ^0 : item.Value.End.GetSample(track);
+				chunks.Add(item.Key, track.Samples[item.Value.Start.GetSample(track)..end]);
 			}
 			Dictionary<string, AudioChannel> segments = [];
 			foreach (KeyValuePair<string, AudioSegmentsData> item in descriptor.Segments) {
@@ -69,7 +69,7 @@ namespace ProceduralMusicLib {
 		public struct CutPosition {
 			int? sample;
 			TimeSpan time;
-			public readonly int GetSample(int sampleRate) => sample ?? (int)(sampleRate * time.TotalSeconds);
+			public readonly int GetSample(ExtractedAudioTrack track) => (sample ?? (int)(track.SampleRate * time.TotalSeconds)) * 2 * (int)track.Channels;
 			public static CutPosition Parse(string text) {
 				if (text.EndsWith("s", StringComparison.InvariantCultureIgnoreCase)) return new() {
 					sample = int.Parse(text[..^1])
