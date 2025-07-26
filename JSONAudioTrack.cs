@@ -1,21 +1,15 @@
-﻿using Microsoft.Xna.Framework.Audio;
+using Microsoft.Xna.Framework.Audio;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Bson;
-using Newtonsoft.Json.Linq;
 using NVorbis;
-using NVorbis.Contracts;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.ComponentModel.Design.Serialization;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Terraria;
 using Terraria.ModLoader;
-using XPT.Core.Audio.MP3Sharp;
+using static ProceduralMusicLib.JSONAudioTrack;
 
 namespace ProceduralMusicLib {
 	public class JSONAudioTrack : ChanneledAudioTrack {
@@ -44,8 +38,7 @@ namespace ProceduralMusicLib {
 			Dictionary<string, byte[]> chunks = [];
 			foreach (KeyValuePair<string, AudioChunkData> item in descriptor.Chunks) {
 				ExtractedAudioTrack track = tracks[item.Value.AudioPath];
-				Index end = item.Value.End == default ? ^0 : item.Value.End.GetSample(track);
-				chunks.Add(item.Key, track.Samples[item.Value.Start.GetSample(track)..end]);
+				chunks.Add(item.Key, track.Samples[track.GetSampleRange(item.Value.Start, item.Value.End)]);
 			}
 			Dictionary<string, AudioChannel> segments = [];
 			foreach (KeyValuePair<string, AudioSegmentsData> item in descriptor.Segments) {
@@ -239,5 +232,10 @@ namespace ProceduralMusicLib {
 			Readers = null;
 		}
 	}
-	public record class ExtractedAudioTrack(byte[] Samples, int SampleRate, AudioChannels Channels);
+	public record class ExtractedAudioTrack(byte[] Samples, int SampleRate, AudioChannels Channels) {
+		public Range GetSampleRange(CutPosition start, CutPosition end) {
+			Index endIndex = end == default ? ^0 : end.GetSample(this);
+			return start.GetSample(this)..endIndex;
+		}
+	}
 }

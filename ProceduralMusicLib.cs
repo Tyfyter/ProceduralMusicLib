@@ -1,6 +1,4 @@
-﻿using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
-using Microsoft.Xna.Framework.Graphics;
+﻿using Microsoft.Xna.Framework.Audio;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,12 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Terraria;
 using Terraria.Audio;
-using Terraria.GameContent;
-using Terraria.GameContent.Tile_Entities;
-using Terraria.ID;
 using Terraria.ModLoader;
-using XPT.Core.Audio.MP3Sharp.Decoding;
-using static ProceduralMusicLib.AudioBuilder;
 
 namespace ProceduralMusicLib {
 	public class ProceduralMusicLib : Mod {
